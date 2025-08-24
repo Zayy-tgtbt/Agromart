@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buyer Registration - AgroMart</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .form-container {
+      max-width: 400px;
+      margin: 2rem auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    input, button {
+      width: 100%;
+      padding: 0.7rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    button {
+      background: #1d3557;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛒 Register as a Buyer</h1>
+    <nav><a href="index.html">Home</a></nav>
+  </header>
+
+  <main>
+    <div class="form-container">
+      <form id="buyer-register-form">
+        <input type="text" id="fullName" placeholder="Full Name" required />
+        <input type="email" id="email" placeholder="Email Address" required />
+        <input type="password" id="password" placeholder="Create Password" required />
+        <input type="text" id="phone" placeholder="Phone Number (e.g. 08012345678)" required />
+        <input type="text" id="location" placeholder="Location (e.g. Lagos, Nigeria)" required />
+        <button type="submit">Register</button>
+      </form>
+      <p>Already have an account? <a href="buyer-login.html">Login here</a></p>
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+    // ===== Firebase Config =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdoTdXVaYDJCj70NzbI7EHBk-yaPLCrHA",
+      authDomain: "agromart-42282.firebaseapp.com",
+      projectId: "agromart-42282",
+      storageBucket: "agromart-42282.firebasestorage.app",
+      messagingSenderId: "474658149379",
+      appId: "1:474658149379:web:d37b61e145ffb68130ea36",
+      measurementId: "G-7W4M59GG63"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ===== Handle Form Submission =====
+    document.getElementById("buyer-register-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const fullName = document.getElementById("fullName").value.trim();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const phone = document.getElementById("phone").value.trim();
+      const location = document.getElementById("location").value.trim();
+
+      try {
+        // Create Firebase Auth account
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Save buyer profile in Firestore
+        await setDoc(doc(db, "buyers", user.uid), {
+          fullName,
+          email,
+          phone,
+          location,
+          createdAt: new Date()
+        });
+
+        alert("✅ Buyer registered successfully!");
+        window.location.href = "buyer-dashboard.html";
+      } catch (error) {
+        console.error(error);
+        alert("❌ Registration failed: " + error.message);
+      }
+    });
+  </script>
+</body>
+</html>

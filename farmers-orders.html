@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Farmer Orders - AgroMart</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    .order-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    .order-card h3 {
+      margin-bottom: 0.5rem;
+      color: #2d6a4f;
+    }
+    .order-items {
+      margin: 0.5rem 0;
+      padding-left: 1.2rem;
+    }
+    .order-status {
+      margin-top: 0.5rem;
+      font-weight: bold;
+    }
+    .status-pending { color: #ff9800; }
+    .status-processing { color: #3498db; }
+    .status-completed { color: #27ae60; }
+    .update-btn {
+      margin-top: 0.5rem;
+      margin-right: 0.5rem;
+      padding: 0.4rem 0.8rem;
+      border: none;
+      border-radius: 6px;
+      background: #2d6a4f;
+      color: #fff;
+      cursor: pointer;
+    }
+    .export-btn {
+      margin: 1rem 0;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: 6px;
+      background: #1d3557;
+      color: #fff;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📦 Farmer Orders</h1>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="farmer-orders.html">Orders</a>
+      <a href="index.html">Logout</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Orders for Your Products</h2>
+    <button class="export-btn" id="exportExcelBtn">📊 Export Completed Orders</button>
+    <div id="orders-list"></div>
+  </main>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { 
+      getFirestore, collection, onSnapshot, updateDoc, doc 
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+    // ===== Firebase Config =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdoTdXVaYDJCj70NzbI7EHBk-yaPLCrHA",
+      authDomain: "agromart-42282.firebaseapp.com",
+      projectId: "agromart-42282",
+      storageBucket: "agromart-42282.firebasestorage.app",
+      messagingSenderId: "474658149379",
+      appId: "1:474658149379:web:d37b61e145ffb68130ea36",
+      measurementId: "G-7W4M59GG63"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    let currentFarmer = null;
+    let completedOrders = [];
+
+    // ===== Auth Listener =====
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        currentFarmer = user;
+        subscribeToOrders(user.uid);
+      } else {
+        window.location.href = "login.html";
+      }
+    });
+
+    // ===== Real-Time Orders Listener =====
+    function subscribeToOrders(farmerId) {
+      const ordersList = document.getElementById("orders-list");
+      ordersList.innerHTML = "<p>Loading orders...</p>";
+
+      onSnapshot(collection(db, "orders"), (snapshot) => {
+        ordersList.innerHTML = "";
+        completedOrders = [];
+
+        if (snapshot.empty) {
+          ordersList.innerHTML = "<p>No orders yet.</p>";
+          return;
+        }
+
+        snapshot.forEach((docSnap) => {
+          const order = docSnap.data();
+
+          // Get only this farmer's items
+          const farmerItems = order.items.filter(item => item.farmerId === farmerId);
+          if (farmerItems.length === 0) return;
+
+          const total = farmerItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+
+          const orderDiv = document.createElement("div");
+          orderDiv.classList.add("order-card");
+
+          orderDiv.innerHTML = `
+            <h3>Order ID: ${docSnap.id}</h3>
+            <p><strong>Buyer:</strong> ${order.buyerEmail}</p>
+            <p><strong>Location:</strong> ${order.buyerLocation || "N/A"}</p>
+            <p><strong>Total:</strong> ₦${total}</p>
+            <ul class="order-items">
+              ${farmerItems.map(item => `<li>${item.name} - ₦${item.price} x ${item.quantity || 1}</li>`).join("")}
+            </ul>
+            <div class="order-status">
+              Status: <span class="status-${(order.status || 'pending').toLowerCase()}">${order.status || "Pending"}</span>
+            </div>
+            <p><small>Created: ${order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleString() : "N/A"}</small></p>
+            <p><small>Completed: ${order.completedAt ? new Date(order.completedAt).toLocaleString() : "N/A"}</small></p>
+            <button class="update-btn" onclick="updateOrderStatus('${docSnap.id}', 'Processing')">Mark as Processing</button>
+            <button class="update-btn" onclick="updateOrderStatus('${docSnap.id}', 'Completed')">Mark as Completed</button>
+          `;
+
+          ordersList.appendChild(orderDiv);
+
+          // Store completed orders for export
+          if (order.status === "Completed") {
+            completedOrders.push({
+              id: docSnap.id,
+              buyer: order.buyerEmail,
+              location: order.buyerLocation,
+              items: farmerItems,
+              status: order.status,
+              createdAt: order.createdAt,
+              completedAt: order.completedAt
+            });
+          }
+        });
+      });
+    }
+
+    // ===== Update Order Status =====
+    window.updateOrderStatus = async (orderId, status) => {
+      try {
+        const updateData = { status };
+        if (status === "Completed") {
+          updateData.completedAt = new Date();
+        }
+        await updateDoc(doc(db, "orders", orderId), updateData);
+        alert("✅ Order updated to " + status);
+      } catch (error) {
+        console.error(error);
+        alert("❌ Failed to update order.");
+      }
+    };
+
+    // ===== Export to Excel =====
+    document.getElementById("exportExcelBtn").addEventListener("click", () => {
+      if (completedOrders.length === 0) {
+        alert("No completed orders to export.");
+        return;
+      }
+
+      const wsData = [
+        ["Order ID", "Buyer", "Buyer Location", "Items", "Total Value (₦)", "Status", "Created At", "Completed At"],
+        ...completedOrders.map(order => [
+          order.id,
+          order.buyer,
+          order.location || "N/A",
+          order.items.map(i => `${i.name} (₦${i.price} x ${i.quantity || 1})`).join("; "),
+          order.items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0),
+          order.status,
+          order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleString() : "N/A",
+          order.completedAt ? new Date(order.completedAt).toLocaleString() : "N/A"
+        ])
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      // Auto column widths
+      const colWidths = wsData[0].map((h, i) => ({
+        wch: Math.max(...wsData.map(row => (row[i] ? row[i].toString().length : 10))) + 2
+      }));
+      ws["!cols"] = colWidths;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Orders");
+
+      XLSX.writeFile(wb, "completed_orders.xlsx");
+    });
+  </script>
+</body>
+</html>

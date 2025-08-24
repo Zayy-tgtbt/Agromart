@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buyer Dashboard - AgroMart</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .product-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    .cart {
+      background: #f8f9fa;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+    }
+    .checkout-btn {
+      background: #1d3557;
+      color: #fff;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛒 Buyer Dashboard</h1>
+    <nav>
+      <a href="buyer-dashboard.html">Products</a>
+      <a href="index.html">Logout</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Available Products</h2>
+    <div id="products-list"></div>
+
+    <div class="cart">
+      <h3>Your Cart</h3>
+      <ul id="cart-list"></ul>
+      <p><strong>Total:</strong> ₦<span id="cart-total">0</span></p>
+      <input type="text" id="delivery-location" placeholder="Enter your delivery location" required />
+      <button class="checkout-btn" id="checkoutBtn">Checkout</button>
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { 
+      getFirestore, collection, getDocs, addDoc, serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+    // ===== Firebase Config =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdoTdXVaYDJCj70NzbI7EHBk-yaPLCrHA",
+      authDomain: "agromart-42282.firebaseapp.com",
+      projectId: "agromart-42282",
+      storageBucket: "agromart-42282.firebasestorage.app",
+      messagingSenderId: "474658149379",
+      appId: "1:474658149379:web:d37b61e145ffb68130ea36",
+      measurementId: "G-7W4M59GG63"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    let currentBuyer = null;
+    let cart = [];
+
+    // ===== Auth Listener =====
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        currentBuyer = user;
+        loadProducts();
+      } else {
+        window.location.href = "login.html";
+      }
+    });
+
+    // ===== Load Products =====
+    async function loadProducts() {
+      const productsList = document.getElementById("products-list");
+      productsList.innerHTML = "<p>Loading products...</p>";
+
+      const snapshot = await getDocs(collection(db, "products"));
+      productsList.innerHTML = "";
+
+      snapshot.forEach((docSnap) => {
+        const product = docSnap.data();
+        const productDiv = document.createElement("div");
+        productDiv.classList.add("product-card");
+
+        productDiv.innerHTML = `
+          <h3>${product.name}</h3>
+          <p>Price: ₦${product.price}</p>
+          <p>Farmer: ${product.farmerName || "Unknown"}</p>
+          <button onclick="addToCart('${docSnap.id}', '${product.name}', ${product.price}, '${product.farmerId}')">Add to Cart</button>
+        `;
+
+        productsList.appendChild(productDiv);
+      });
+    }
+
+    // ===== Add to Cart =====
+    window.addToCart = (id, name, price, farmerId) => {
+      const item = { id, name, price, farmerId, quantity: 1 };
+      cart.push(item);
+      renderCart();
+    };
+
+    function renderCart() {
+      const cartList = document.getElementById("cart-list");
+      const cartTotal = document.getElementById("cart-total");
+
+      cartList.innerHTML = "";
+      let total = 0;
+
+      cart.forEach((item, index) => {
+        total += item.price * item.quantity;
+        const li = document.createElement("li");
+        li.textContent = `${item.name} - ₦${item.price} x ${item.quantity}`;
+        cartList.appendChild(li);
+      });
+
+      cartTotal.textContent = total;
+    }
+
+    // ===== Checkout =====
+    document.getElementById("checkoutBtn").addEventListener("click", async () => {
+      if (cart.length === 0) {
+        alert("Your cart is empty.");
+        return;
+      }
+
+      const locationInput = document.getElementById("delivery-location").value.trim();
+      if (!locationInput) {
+        alert("Please enter your delivery location.");
+        return;
+      }
+
+      try {
+        await addDoc(collection(db, "orders"), {
+          buyerEmail: currentBuyer.email,
+          buyerLocation: locationInput,
+          items: cart,
+          status: "Pending",
+          createdAt: serverTimestamp()
+        });
+
+        alert("✅ Order placed successfully!");
+        cart = [];
+        renderCart();
+      } catch (error) {
+        console.error(error);
+        alert("❌ Failed to place order.");
+      }
+    });
+  </script>
+</body>
+</html>
